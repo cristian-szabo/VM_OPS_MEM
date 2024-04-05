@@ -1,0 +1,99 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 22,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/Build/${presetName}",
+            "installDir": "${sourceDir}/Install",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+                "PYBIND11_NUMPY_1_ONLY": true
+            }
+        },
+        {
+            "name": "clang_base",
+            "hidden": true,
+            "inherits": "base",
+            "displayName": "Clang 16",
+            "generator": "Unix Makefiles",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++"
+            }
+        },
+        {
+            "name": "clang_32_base",
+            "hidden": true,
+            "inherits": "clang_base",
+            "cacheVariables": {
+                "CMAKE_C_FLAGS": "-m32",
+                "CMAKE_CXX_FLAGS": "-m32"
+            }
+        },
+        {
+            "name": "clang_32_debug",
+            "inherits": "clang_32_base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "clang_32_release",
+            "inherits": "clang_32_base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "clang_64_base",
+            "hidden": true,
+            "inherits": "clang_base",
+            "cacheVariables": {
+                "CMAKE_C_FLAGS": "-m64",
+                "CMAKE_CXX_FLAGS": "-m64"
+            }
+        },
+        {
+            "name": "clang_64_debug",
+            "inherits": "clang_64_base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "clang_64_release",
+            "inherits": "clang_64_base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "clang_64_release_install",
+            "configurePreset": "clang_64_release",
+            "targets": [ "install" ]
+        },
+        {
+            "name": "clang_64_debug_install",
+            "configurePreset": "clang_64_debug",
+            "targets": [ "install" ]
+        },
+        {
+            "name": "clang_64_release_all",
+            "configurePreset": "clang_64_release",
+            "targets": [ "all" ]
+        },
+        {
+            "name": "clang_64_debug_all",
+            "configurePreset": "clang_64_debug",
+            "targets": [ "all" ]
+        }
+    ]
+}

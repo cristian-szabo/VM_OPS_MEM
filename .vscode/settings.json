@@ -1,0 +1,10 @@
+{
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}\\Install\\lib"
+    ],
+    "cmake.useCMakePresets": "always",
+    "cmake.configureOnEdit": false,
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "modifications",
+}
