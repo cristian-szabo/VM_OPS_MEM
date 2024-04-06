@@ -13,7 +13,7 @@
             "installDir": "${sourceDir}/Install",
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": true,
-                "PYBIND11_NUMPY_1_ONLY": true
+                "CMAKE_VERBOSE_MAKEFILE": true
             }
         },
         {

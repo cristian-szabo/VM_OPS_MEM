@@ -27,7 +27,7 @@ set_tiledata_use() {
 }
 
 void
-Ops_X86_64(pybind11::module &m) {
+Ops_X86_64(nanobind::module_ &m) {
     m.def("amx_s8", [](uint64_t steps) {
         if (!set_tiledata_use()) {
             throw std::runtime_error("Failed to enable amx");

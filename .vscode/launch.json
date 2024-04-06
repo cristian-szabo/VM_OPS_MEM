@@ -26,6 +26,23 @@
             "type": "debugpy",
             "request": "launch",
             "program": "monitor.py",
+            "args": [
+                // "--ops",
+                /* MATRIX MULTIPLY ACCUMULATE */
+                // "MMLA_S8_S32",
+                // "MMLA_BF16_F32",
+                /* MULTIPLY ACCUMULATE */
+                // "MLA_F32_F32",
+                // "MLA_BF16_F32",
+                // "MLA_S8_S16",
+                /* DOT PRODUCT */
+                // "DOT_BF16_F32",
+                // "DOT_S8_S32",
+                /* FUSED MULTIPLY ACCUMULATE */
+                // "FMA_F32_F32",
+                // "FMA_F16_F16",
+                // "FMA_F16_F32"
+            ],
             "console": "integratedTerminal"
         }
     ]
