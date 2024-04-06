@@ -14,7 +14,7 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
         ops_x86_64.h
         ops_x86_64.cpp
     )
-elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "ARM64")
+elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
     list(APPEND PROJECT_FILES
         ops_arm_64.h
         ops_arm_64.cpp
@@ -27,7 +27,8 @@ pybind11_add_module(${PROJECT_NAME} MODULE ${PROJECT_FILES})
 
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
     target_compile_options(${PROJECT_NAME} PRIVATE -mamx-int8 -mamx-bf16 -mamx-tile -mavxvnni)
-elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "ARM64")
+elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
+    target_compile_options(${PROJECT_NAME} PRIVATE -march=armv8.2-a+i8mm+bf16+dotprod)
 endif()
 
 install(TARGETS ${PROJECT_NAME}
