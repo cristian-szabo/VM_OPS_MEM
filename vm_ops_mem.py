@@ -21,17 +21,28 @@ class ArmOpsType(enum.IntEnum):
     FMA_F16_F16 = enum.auto() # vfmaq_f16 [FMLA] (input 8, weight 8, output 8)
     FMA_F16_F32 = enum.auto()  # vfmlalq_low_f16 [FMLAL] (input 8, weight 8, output 4)
 
+class IntelOpsType(enum.IntEnum):
+    # ADVANCED MATRIX EXTENSION 
+    AMX_S8_S32 = enum.auto()
+    AMX_BF16_F32 = enum.auto()
+
+
 class Result(ctypes.Structure):
     _fields_ = [
         ('time', ctypes.c_longlong),
         ('ops', ctypes.c_ulonglong),
-        ('output', ctypes.c_char*32)
+        ('output', ctypes.c_char*1024)
     ]
 
-dynlib_file = "./Install/lib/libVmOpsMem.so"
-lib = ctypes.cdll.LoadLibrary(dynlib_file)
+class CpuResult(ctypes.Structure):
+    _fields_ = [
+        ('time', ctypes.c_double),
+        ('cycles', ctypes.c_ulonglong),
+    ]
 
-OpsType = ArmOpsType
+# dynlib_file = "/home/ubuntu/VM_OPS_MEM/Build/clang_64_debug/VmOpsMem/lib/libVmOpsMem.so"
+dynlib_file = "/home/ubuntu/VM_OPS_MEM/Install/lib/libVmOpsMem.so"
+lib = ctypes.cdll.LoadLibrary(dynlib_file)
 
 def supported_arm_ops():
     ops = list()
@@ -93,5 +104,33 @@ def measure_arm_ops(op, steps):
         raise RuntimeError(f"Measure function for op `{op}` not found!")
     return result.time, result.ops
 
-supported_ops = supported_arm_ops
-measure_ops = measure_arm_ops
+def supported_intel_ops():
+    ops = list()
+    if lib.amx_s8_s32_support():
+        ops.append(IntelOpsType.AMX_S8_S32)
+    return ops
+
+def measure_intel_ops(op, steps):
+    result = None
+    if op == IntelOpsType.AMX_S8_S32:
+        lib.amx_s8_s32.restype = Result
+        result = lib.amx_s8_s32(steps)
+    else:
+        raise RuntimeError(f"Measure function for op `{op}` not found!")
+    return result.time, result.ops
+
+if lib.arm_build():
+    OpsType = ArmOpsType
+    supported_ops = supported_arm_ops
+    measure_ops = measure_arm_ops
+else:
+    OpsType = IntelOpsType
+    supported_ops = supported_intel_ops
+    measure_ops = measure_intel_ops
+
+lib.init()
+
+def cpu_time():
+    lib.cpu_time.restype = CpuResult
+    result = lib.cpu_time()
+    return result.time, result.cycles

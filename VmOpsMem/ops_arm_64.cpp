@@ -67,12 +67,33 @@
 struct Result {
     int64_t time;
     uint64_t ops;
-    char output[32];
+    char output[1024];
 };
+
+auto start_time = std::chrono::high_resolution_clock::now();
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+VMOPSMEM_EXPORT bool
+init() {
+    return true;
+}
+
+VMOPSMEM_EXPORT CpuResult
+cpu_time() {
+    uint64_t cycles;
+    asm("mrs %0, cntvct_el0" : "=r"(cycles));
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+
+    CpuResult r;
+    r.cycles = cycles;
+    r.time = std::chrono::duration<double>(elapsed_time).count();
+    return r;
+}
 
 /* MATRIX MULTIPLY ACCUMULATE */
 VMOPSMEM_EXPORT int32_t

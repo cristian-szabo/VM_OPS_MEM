@@ -5,12 +5,12 @@ include(GenerateExportHeader)
 project(VmOpsMem LANGUAGES CXX)
 
 set(PROJECT_FILES
-    mem.cpp
+    vm_ops_mem.cpp
 )
 
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
     list(APPEND PROJECT_FILES
-        ops_x86_64.cpp
+        ops_intel_64.cpp
     )
 elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
     list(APPEND PROJECT_FILES

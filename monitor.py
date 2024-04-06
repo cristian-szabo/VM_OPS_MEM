@@ -1,4 +1,5 @@
 import argparse
+import threading
 
 import vm_ops_mem as vom
 
@@ -27,6 +28,7 @@ def main():
 
     elapsed_time = 0
     total_ops = 0
+    total_freq = 0
     steps = 0
 
     supported_ops = vom.supported_ops()
@@ -42,19 +44,27 @@ def main():
     while True:
         op = supported_ops[op_id]
 
+        time_start, cycles_start = vom.cpu_time()
         time, ops = vom.measure_ops(op, args.steps)
+        time_end, cycles_end = vom.cpu_time()
+
+        time_elapsed = time_end - time_start
+        cycles_elapsed = cycles_end - cycles_start
+        freq = cycles_elapsed / time_elapsed
+
         time_sec = time / 1e9
 
         elapsed_time += time_sec
         total_ops += ops
+        total_freq += freq
         steps += 1
 
         if elapsed_time > args.report:
             peak_ops = total_ops / elapsed_time
             ai = total_ops / (elapsed_time * 1e9)
+            cpu_freq = total_freq / steps
             ops_fmt, ops_unit = sizeof_fmt(total_ops)
             peak_fmt, peak_unit = sizeof_fmt(peak_ops)
-            cpu_freq = peak_ops / ai
             cpu_fmt, cpu_unit = sizeof_fmt(cpu_freq, "Hz")
 
             print(f"Name: {op.name}")
@@ -69,6 +79,7 @@ def main():
             elapsed_time = 0
             total_ops = 0
             steps = 0
+            total_freq = 0
 
             op_id = (op_id + 1) % len(supported_ops)
 
