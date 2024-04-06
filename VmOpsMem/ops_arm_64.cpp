@@ -70,7 +70,12 @@ struct Result {
     char output[1024];
 };
 
-auto start_time = std::chrono::high_resolution_clock::now();
+struct CpuResult {
+    int64_t time;
+    uint64_t cycles;
+};
+
+std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,6 +83,7 @@ extern "C" {
 
 VMOPSMEM_EXPORT bool
 init() {
+    start_time = std::chrono::high_resolution_clock::now();
     return true;
 }
 
@@ -87,11 +93,11 @@ cpu_time() {
     asm("mrs %0, cntvct_el0" : "=r"(cycles));
 
     auto end_time = std::chrono::high_resolution_clock::now();
-    auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time);
 
     CpuResult r;
     r.cycles = cycles;
-    r.time = std::chrono::duration<double>(elapsed_time).count();
+    r.time = elapsed_time.count();
     return r;
 }
 

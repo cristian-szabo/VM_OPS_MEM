@@ -49,6 +49,7 @@ def main():
         time_end, cycles_end = vom.cpu_time()
 
         time_elapsed = time_end - time_start
+        time_elapsed = time_elapsed / 1e9
         cycles_elapsed = cycles_end - cycles_start
         freq = cycles_elapsed / time_elapsed
 

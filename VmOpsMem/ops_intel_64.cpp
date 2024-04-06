@@ -31,11 +31,11 @@ struct Result {
 };
 
 struct CpuResult {
-    double time;
+    int64_t time;
     uint64_t cycles;
 };
 
-auto start_time = std::chrono::high_resolution_clock::now();
+std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,6 +49,8 @@ init() {
         return true;
     }
 
+    start_time = std::chrono::high_resolution_clock::now();
+
     return true;
 }
 
@@ -58,11 +60,11 @@ cpu_time() {
     __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
 
     auto end_time = std::chrono::high_resolution_clock::now();
-    auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time);
 
     CpuResult r;
     r.cycles = ((uint64_t) hi << 32) | lo;
-    r.time = std::chrono::duration<double>(elapsed_time).count();
+    r.time = elapsed_time.count();
     return r;
 }
 

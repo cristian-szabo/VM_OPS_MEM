@@ -36,8 +36,8 @@ class Result(ctypes.Structure):
 
 class CpuResult(ctypes.Structure):
     _fields_ = [
-        ('time', ctypes.c_double),
-        ('cycles', ctypes.c_ulonglong),
+        ("time", ctypes.c_longlong),
+        ("cycles", ctypes.c_ulonglong),
     ]
 
 # dynlib_file = "/home/ubuntu/VM_OPS_MEM/Build/clang_64_debug/VmOpsMem/lib/libVmOpsMem.so"
@@ -134,3 +134,6 @@ def cpu_time():
     lib.cpu_time.restype = CpuResult
     result = lib.cpu_time()
     return result.time, result.cycles
+
+if lib.debug_build():
+    print("WARNING: Debug build of VmOpsMem is used!")
