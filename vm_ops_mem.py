@@ -1,4 +1,7 @@
+import os
 import enum
+
+import concurrent.futures
 
 import ctypes
 
@@ -16,15 +19,20 @@ class ArmOpsType(enum.IntEnum):
     DOT_BF16_F32 = enum.auto() # vbfdotq_f32 [BFDOT] (input 8, weight 8, output 4)
     DOT_S8_S32 = enum.auto()   # vdotq_s32 [SDOT] (input 16, weight 16, output 4)
 
-    # FUSED MULTIPLY ACCUMULATE 
+    # FUSED MULTIPLY ACCUMULATE
     FMA_F32_F32 = enum.auto() # vfmaq_f32 [FMLA] (input 4, weight 4, output 4)
     FMA_F16_F16 = enum.auto() # vfmaq_f16 [FMLA] (input 8, weight 8, output 8)
     FMA_F16_F32 = enum.auto()  # vfmlalq_low_f16 [FMLAL] (input 8, weight 8, output 4)
 
-class IntelOpsType(enum.IntEnum):
-    # ADVANCED MATRIX EXTENSION 
+
+class X86OpsType(enum.IntEnum):
+    # ADVANCED MATRIX EXTENSION
     AMX_S8_S32 = enum.auto()
     AMX_BF16_F32 = enum.auto()
+
+    # VECTOR NEURAL NETWORK
+    VNN_S8_S32 = enum.auto()
+    VNN_F16_F32 = enum.auto()
 
 
 class Result(ctypes.Structure):
@@ -40,8 +48,18 @@ class CpuResult(ctypes.Structure):
         ("cycles", ctypes.c_ulonglong),
     ]
 
-# dynlib_file = "/home/ubuntu/VM_OPS_MEM/Build/clang_64_debug/VmOpsMem/lib/libVmOpsMem.so"
-dynlib_file = "/home/ubuntu/VM_OPS_MEM/Install/lib/libVmOpsMem.so"
+
+class LogicalCore(ctypes.Structure):
+    _fields_ = [
+        ("index", ctypes.c_uint),
+        ("package_id", ctypes.c_uint),
+        ("core_id", ctypes.c_uint),
+        ("smt_id", ctypes.c_uint),
+    ]
+
+
+dynlib_file = "/home/ubuntu/VM_OPS_MEM/Build/clang_64_debug/VmOpsMem/lib/libVmOpsMem.so"
+# dynlib_file = "/home/ubuntu/VM_OPS_MEM/Install/lib/libVmOpsMem.so"
 lib = ctypes.cdll.LoadLibrary(dynlib_file)
 
 def supported_arm_ops():
@@ -104,29 +122,47 @@ def measure_arm_ops(op, steps):
         raise RuntimeError(f"Measure function for op `{op}` not found!")
     return result.time, result.ops
 
-def supported_intel_ops():
+
+def supported_x86_ops():
     ops = list()
     if lib.amx_s8_s32_support():
-        ops.append(IntelOpsType.AMX_S8_S32)
+        ops.append(X86OpsType.AMX_S8_S32)
+    if lib.amx_bf16_f32_support():
+        ops.append(X86OpsType.AMX_BF16_F32)
+    if lib.vnn_s8_s32_support():
+        ops.append(X86OpsType.VNN_S8_S32)
+    if lib.vnn_f16_f32_support():
+        ops.append(X86OpsType.VNN_F16_F32)
     return ops
 
-def measure_intel_ops(op, steps):
+
+def measure_x86_ops(op, steps):
     result = None
-    if op == IntelOpsType.AMX_S8_S32:
+    if op == X86OpsType.AMX_S8_S32:
         lib.amx_s8_s32.restype = Result
         result = lib.amx_s8_s32(steps)
+    elif op == X86OpsType.AMX_BF16_F32:
+        lib.amx_bf16_f32.restype = Result
+        result = lib.amx_bf16_f32(steps)
+    elif op == X86OpsType.VNN_S8_S32:
+        lib.vnn_s8_s32.restype = Result
+        result = lib.vnn_s8_s32(steps)
+    elif op == X86OpsType.VNN_F16_F32:
+        lib.vnn_f16_f32.restype = Result
+        result = lib.vnn_f16_f32(steps)
     else:
         raise RuntimeError(f"Measure function for op `{op}` not found!")
     return result.time, result.ops
+
 
 if lib.arm_build():
     OpsType = ArmOpsType
     supported_ops = supported_arm_ops
     measure_ops = measure_arm_ops
 else:
-    OpsType = IntelOpsType
-    supported_ops = supported_intel_ops
-    measure_ops = measure_intel_ops
+    OpsType = X86OpsType
+    supported_ops = supported_x86_ops
+    measure_ops = measure_x86_ops
 
 lib.init()
 
@@ -135,5 +171,141 @@ def cpu_time():
     result = lib.cpu_time()
     return result.time, result.cycles
 
+
+def set_thread_affinity(core_id):
+    lib.set_thread_affinity.argtypes = [ctypes.c_int32]
+    lib.set_thread_affinity(core_id)
+
+
+def set_thread_priority():
+    lib.set_thread_priority()
+
+
+def logical_cores():
+    num_cores = os.cpu_count()
+    result = (LogicalCore * num_cores)()
+    lib.logical_cores.argtypes = [ctypes.POINTER(LogicalCore), ctypes.c_int]
+    lib.logical_cores(result, ctypes.c_int(num_cores))
+    return result
+
+
+def system_topology():
+    cpus = logical_cores()
+    system = dict()
+    for cpu_info in cpus:
+        socket_key = f"Socket#{cpu_info.package_id}"
+        core_key = f"Core#{cpu_info.core_id}"
+        cpu_key = f"CPU#{cpu_info.smt_id}"
+        thread_key = f"Thread#{cpu_info.index}"
+
+        if socket_key not in system:
+            system[socket_key] = dict()
+
+        if core_key not in system[socket_key]:
+            system[socket_key][core_key] = dict()
+
+        if cpu_key not in system[socket_key][core_key]:
+            system[socket_key][core_key][cpu_key] = dict()
+
+        system[socket_key][core_key][cpu_key] = thread_key
+    return system
+
+
 if lib.debug_build():
     print("WARNING: Debug build of VmOpsMem is used!")
+
+
+def sizeof_fmt(num, suffix="Ops", steps=1024.0):
+    for unit in ("", "K", "M", "G", "T", "P", "E", "Z"):
+        if abs(num) < steps:
+            return num, f"{unit}{suffix}"
+        num /= steps
+    return num, f"Y{suffix}"
+
+
+class PerfReport:
+    def __init__(self, name, ratio=1):
+        self.name = name
+        self.ratio = ratio
+        self.elapsed_time = 0
+        self.total_ops = 0
+        self.total_freq = 0
+        self.steps = 0
+
+    def update(self, elapsed_time, total_ops, total_freq, steps):
+        self.elapsed_time += elapsed_time
+        self.total_ops += total_ops
+        self.total_freq += total_freq
+        self.steps += steps
+
+    def __str__(self):
+        peak_ops = self.total_ops / self.elapsed_time
+        ai = self.total_ops / (self.elapsed_time * 1e9)
+        cpu_freq = self.total_freq / self.steps
+        ops_fmt, ops_unit = sizeof_fmt(self.total_ops)
+        peak_fmt, peak_unit = sizeof_fmt(peak_ops)
+        cpu_fmt, cpu_unit = sizeof_fmt(cpu_freq, "Hz")
+        str = ""
+        str += f"Name: {self.name}\n"
+        str += f"Time: {self.elapsed_time / self.ratio:.2f} sec\n"
+        str += f"Ops: {ops_fmt / self.ratio:.2f} {ops_unit}\n"
+        str += f"Peak: {peak_fmt:.2f} {peak_unit}/sec\n"
+        str += f"AI: {ai:.2f} ops/cycle\n"
+        str += f"CpuFreq: {cpu_fmt:.2f} {cpu_unit}\n"
+        str += f"Bench: {self.steps / self.ratio} iters/report\n"
+        return str
+
+
+class PerfMonitor:
+    def __init__(self, num_cores=None):
+        self.physical_cores = [core for core in logical_cores() if core.smt_id == 0]
+        self.num_cores = len(self.physical_cores)
+
+        if num_cores is not None:
+            assert num_cores <= self.num_cores
+            self.num_cores = num_cores
+            self.physical_cores = self.physical_cores[0:num_cores]
+
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=num_cores)
+
+    def measure(self, op, steps, time):
+        report_futures = list(
+            [
+                self.executor.submit(PerfMonitor.worker, core_info, op, steps, time)
+                for core_info in self.physical_cores
+            ]
+        )
+
+        report = PerfReport(op.name, self.num_cores)
+        for future in report_futures:
+            core_report = future.result()
+            report.update(
+                core_report.elapsed_time,
+                core_report.total_ops,
+                core_report.total_freq,
+                core_report.steps,
+            )
+
+        return report
+
+    @staticmethod
+    def worker(core_info, op, steps, time):
+        set_thread_affinity(core_info.core_id)
+        set_thread_priority()
+
+        report = PerfReport(op.name)
+
+        while report.elapsed_time < time:
+            time_start, cycles_start = cpu_time()
+            ops_time, ops_count = measure_ops(op, steps)
+            time_end, cycles_end = cpu_time()
+
+            time_elapsed = time_end - time_start
+            time_elapsed = time_elapsed / 1e9
+            cycles_elapsed = cycles_end - cycles_start
+            freq = cycles_elapsed / time_elapsed
+            ops_time = ops_time / 1e9
+
+            report.update(ops_time, ops_count, freq, 1)
+
+        return report

@@ -27,7 +27,12 @@
             "request": "launch",
             "program": "monitor.py",
             "args": [
-                // "--ops",
+                // "--cores",
+                // "1",
+                "--ops",
+                // ------------------------------
+                // ARM
+                // ------------------------------
                 /* MATRIX MULTIPLY ACCUMULATE */
                 // "MMLA_S8_S32",
                 // "MMLA_BF16_F32",
@@ -41,7 +46,16 @@
                 /* FUSED MULTIPLY ACCUMULATE */
                 // "FMA_F32_F32",
                 // "FMA_F16_F16",
-                // "FMA_F16_F32"
+                // "FMA_F16_F32",
+                // ------------------------------
+                // X86
+                // ------------------------------
+                /* ADVANCED MATRIX EXTENSION */
+                // "AMX_S8_S32",
+                // "AMX_BF16_F32",
+                /* VECTOR NEURAL NETWORK */
+                "VNN_S8_S32",
+                // "VNN_F16_F32",
             ],
             "console": "integratedTerminal"
         }

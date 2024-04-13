@@ -10,7 +10,7 @@ set(PROJECT_FILES
 
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
     list(APPEND PROJECT_FILES
-        ops_intel_64.cpp
+        ops_x86_64.cpp
     )
 elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
     list(APPEND PROJECT_FILES
@@ -27,7 +27,7 @@ generate_export_header(${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
-    target_compile_options(${PROJECT_NAME} PRIVATE -mamx-int8 -mamx-bf16 -mamx-tile -mavxvnni)
+    target_compile_options(${PROJECT_NAME} PRIVATE -mamx-int8 -mamx-bf16 -mamx-tile -mavx512vnni)
 elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
     target_compile_options(${PROJECT_NAME} PRIVATE -march=armv8.4-a+bf16+i8mm+dotprod+fp16)
 endif()
