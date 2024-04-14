@@ -1,8 +1,9 @@
+#include "vm_ops_mem.h"
+
 #include <chrono>
 #include <cstring>
 #include <thread>
 
-#include <cpuid.h>
 #include <immintrin.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -36,6 +37,19 @@
 #define VNN_F16_F32_SUPPORT 0
 #endif
 
+#define BITBSR(_base, _index)                                                                      \
+    ({                                                                                             \
+        volatile unsigned char _ret;                                                               \
+                                                                                                   \
+        __asm__ volatile("bsr	%[base], %[index]"                                                   \
+                         "\n\t"                                                                    \
+                         "setz	%[ret]"                                                             \
+                         : [ret] "+m"(_ret), [index] "=r"(_index)                                  \
+                         : [base] "rm"(_base)                                                      \
+                         : "cc", "memory");                                                        \
+        _ret;                                                                                      \
+    })
+
 struct tile_config_t {
     uint8_t paletteId;
     uint8_t startRow;
@@ -44,18 +58,91 @@ struct tile_config_t {
     uint8_t rows[16];
 };
 
-struct Result {
-    int64_t time;
-    uint64_t ops;
-    char output[1024];
-};
-
-struct CpuResult {
-    int64_t time;
-    uint64_t cycles;
-};
-
 std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
+
+static std::vector<LogicalCore> processors;
+
+inline unsigned short
+FindMaskWidth(unsigned short maxCount) {
+    unsigned short maskWidth = 0, count = (maxCount - 1);
+
+    if (BITBSR(count, maskWidth) == 0)
+        maskWidth++;
+
+    return maskWidth;
+}
+
+static void
+MapCpuTopology(LogicalCore &core) {
+    unsigned short SMT_Mask_Width;
+    unsigned short CORE_Mask_Width;
+    unsigned short SMT_Select_Mask;
+    unsigned short CORE_Select_Mask;
+    unsigned short PKG_Select_Mask;
+
+    struct {
+        unsigned int Brand_ID : 8 - 0;
+        unsigned int CLFSH_Size : 16 - 8;
+        unsigned int Max_SMT_ID : 24 - 16;
+        unsigned int Init_APIC_ID : 32 - 24;
+    } leaf1_ebx;
+
+    struct {
+        unsigned int Type : 5 - 0;
+        unsigned int Level : 8 - 5;
+        unsigned int Init : 9 - 8;
+        unsigned int Assoc : 10 - 9;
+        unsigned int Unused : 14 - 10;
+        unsigned int Cache_SMT_ID : 26 - 14;
+        unsigned int Max_Core_ID : 32 - 26;
+    } leaf4_eax;
+
+    __asm__ volatile("movq	$0x1,  %%rax	\n\t"
+                     "xorq	%%rbx, %%rbx	\n\t"
+                     "xorq	%%rcx, %%rcx	\n\t"
+                     "xorq	%%rdx, %%rdx	\n\t"
+                     "cpuid			\n\t"
+                     "mov	%%ebx, %0"
+                     : "=r"(leaf1_ebx)
+                     :
+                     : "%rax", "%rbx", "%rcx", "%rdx");
+
+    if (Features.Std.EDX.HTT) {
+        SMT_Mask_Width = leaf1_ebx.Max_SMT_ID;
+
+        __asm__ volatile("movq	$0x4,  %%rax	\n\t"
+                         "xorq	%%rbx, %%rbx	\n\t"
+                         "xorq	%%rcx, %%rcx	\n\t"
+                         "xorq	%%rdx, %%rdx	\n\t"
+                         "cpuid			\n\t"
+                         "mov	%%eax, %0"
+                         : "=r"(leaf4_eax)
+                         :
+                         : "%rax", "%rbx", "%rcx", "%rdx");
+
+        CORE_Mask_Width = leaf4_eax.Max_Core_ID + 1;
+    } else {
+        SMT_Mask_Width = 0;
+        CORE_Mask_Width = 1;
+    }
+
+    if (CORE_Mask_Width != 0) {
+        SMT_Mask_Width = FindMaskWidth(SMT_Mask_Width) / CORE_Mask_Width;
+    }
+
+    SMT_Select_Mask = ~((-1) << SMT_Mask_Width);
+
+    CORE_Select_Mask = (~((-1) << (CORE_Mask_Width + SMT_Mask_Width))) ^ SMT_Select_Mask;
+
+    PKG_Select_Mask = (-1) << (CORE_Mask_Width + SMT_Mask_Width);
+
+    core.ThreadID = leaf1_ebx.Init_APIC_ID & SMT_Select_Mask;
+
+    core.CoreID = (leaf1_ebx.Init_APIC_ID & CORE_Select_Mask) >> SMT_Mask_Width;
+
+    core.PackageID =
+        (leaf1_ebx.Init_APIC_ID & PKG_Select_Mask) >> (CORE_Mask_Width + SMT_Mask_Width);
+}
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,127 +158,19 @@ init() {
         return true;
     }
 
-    start_time = std::chrono::high_resolution_clock::now();
-
-    return true;
-}
-
-struct cpuid_info {
-    unsigned eax;
-    unsigned ebx;
-    unsigned ecx;
-    unsigned edx;
-};
-
-static cpuid_info
-cpuid(unsigned leaf, unsigned subleaf) {
-    cpuid_info info{};
-    __get_cpuid_count(leaf, subleaf, &info.eax, &info.ebx, &info.ecx, &info.edx);
-    return info;
-}
-
-unsigned long
-read_bits(const unsigned int val, const char from, const char to) {
-    unsigned long mask = (1 << (to + 1)) - 1;
-    if (to == 31)
-        return val >> from;
-
-    return (val & mask) >> from;
-}
-
-struct logical_core_t {
-    unsigned OrdIndexOAMsk;
-    unsigned pkg_ID_APIC;
-    unsigned Core_ID_APIC;
-    unsigned SMT_ID_APIC;
-};
-
-VMOPSMEM_EXPORT void
-logical_cores(logical_core_t *logicalCores, unsigned OSProcessorCount) {
-    unsigned CoreSelectMask;
-    unsigned SMTMaskWidth;
-    unsigned PkgSelectMask;
-    unsigned PkgSelectMaskShift;
-    unsigned SMTSelectMask;
-    bool hasLeafB;
-
-    cpuid_info info = cpuid(0, 0);
-    unsigned maxCPUID = info.eax;
-
-    // cpuid leaf B detection
-    if (maxCPUID >= 0xB) {
-        info = cpuid(0xB, 0);
-        hasLeafB = (info.ebx != 0);
-    }
-
-    info = cpuid(1, 0);
-
-    // Use HWMT feature flag CPUID.01:EDX[28]
-    // #1, Processors that support CPUID leaf 0BH
-    if (read_bits(info.edx, 28, 28) && hasLeafB) {
-        int wasCoreReported = 0;
-        int wasThreadReported = 0;
-        int subLeaf = 0, levelType, levelShift;
-        unsigned long coreplusSMT_Mask = 0;
-
-        do {   // we already tested CPUID leaf 0BH contain valid sub-leaves
-            info = cpuid(0xB, subLeaf);
-            // if EBX ==0 then this subleaf is not valid, we can exit the loop
-            if (info.ebx == 0) {
-                break;
-            }
-            levelType = read_bits(info.ecx, 8, 15);
-            levelShift = read_bits(info.eax, 0, 4);
-            switch (levelType) {
-            case 1:   // level type is SMT, so levelShift is the SMT_Mask_Width
-                SMTSelectMask = ~((-1) << levelShift);
-                SMTMaskWidth = levelShift;
-                wasThreadReported = 1;
-                break;
-            case 2:   // level type is Core, so levelShift is the CorePlsuSMT_Mask_Width
-                coreplusSMT_Mask = ~((-1) << levelShift);
-                PkgSelectMaskShift = levelShift;
-                PkgSelectMask = (-1) ^ coreplusSMT_Mask;
-                wasCoreReported = 1;
-                break;
-            default:
-                // handle in the future
-                break;
-            }
-            subLeaf++;
-        } while (1);
-
-        if (wasThreadReported && wasCoreReported) {
-            CoreSelectMask = coreplusSMT_Mask ^ SMTSelectMask;
-        } else if (!wasCoreReported && wasThreadReported) {
-            CoreSelectMask = 0;
-            PkgSelectMaskShift = SMTMaskWidth;
-            PkgSelectMask = (-1) ^ SMTSelectMask;
-        }
-    }
-
     for (unsigned i = 0; i < OSProcessorCount; ++i) {
         set_thread_affinity(i);
         std::this_thread::yield();
 
-        logical_core_t &core = logicalCores[i];
+        LogicalCore &core = processors[i];
+        core.Index = i;
 
-        cpuid_info info{};
-        unsigned APICID{};
-
-        if (hasLeafB) {
-            info = cpuid(0xB, 0);
-            APICID = info.edx;
-        } else {
-            info = cpuid(1, 0);
-            APICID = read_bits(info.ebx, 24, 31);
-        }
-
-        core.OrdIndexOAMsk = i;
-        core.pkg_ID_APIC = ((APICID & PkgSelectMask) >> PkgSelectMaskShift);
-        core.Core_ID_APIC = ((APICID & CoreSelectMask) >> SMTMaskWidth);
-        core.SMT_ID_APIC = (APICID & SMTSelectMask);
+        MapCpuTopology(core);
     }
+
+    start_time = std::chrono::high_resolution_clock::now();
+
+    return true;
 }
 
 VMOPSMEM_EXPORT CpuResult

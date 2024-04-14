@@ -1,5 +1,9 @@
+#include "vm_ops_mem.h"
+
 #include <chrono>
 #include <cstring>
+#include <thread>
+#include <vector>
 
 #include <arm_neon.h>
 #include <asm/hwcap.h>
@@ -64,25 +68,62 @@
 #define FMA_F16_F32_SUPPORT 0
 #endif
 
-struct Result {
-    int64_t time;
-    uint64_t ops;
-    char output[1024];
+union MPIDR {
+    unsigned long long value;
+    struct {
+        unsigned long long Aff0 : 8 - 0;   /*	Thread ID		*/
+        unsigned long long Aff1 : 16 - 8;  /*	Core ID: CPUID[12-8] L1 */
+        unsigned long long Aff2 : 24 - 16; /*	Cluster ID - Level2	*/
+        unsigned long long MT : 25 - 24;   /*	Multithreading		*/
+        unsigned long long UNK : 30 - 25;
+        unsigned long long U : 31 - 30; /*	0=Uniprocessor		*/
+        unsigned long long RES1 : 32 - 31;
+        unsigned long long Aff3 : 40 - 32; /*	Cluster ID - Level3	*/
+        unsigned long long RES0 : 64 - 40;
+    };
 };
 
-struct CpuResult {
-    int64_t time;
-    uint64_t cycles;
-};
+static void
+MapCpuTopology(LogicalCore &core) {
+    volatile MPIDR mpid;
+    __asm__ volatile("mrs	%[mpid] ,	mpidr_el1"
+                     "\n\t"
+                     "isb"
+                     : [mpid] "=r"(mpid)
+                     :
+                     : "memory");
+    if (mpid.MT) {
+        core.PackageID = mpid.Aff2;
+        core.CoreID = mpid.Aff1;
+        core.ThreadID = mpid.Aff0;
+    } else {
+        core.PackageID = mpid.Aff2;
+        core.CoreID = mpid.Aff0;
+    }
+}
 
 std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
+
+std::vector<LogicalCore> processors;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+extern VMOPSMEM_EXPORT void set_thread_affinity(int coreId);
+
 VMOPSMEM_EXPORT bool
 init() {
+    unsigned OSProcessorCount = sysconf(_SC_NPROCESSORS_CONF);
+    processors.resize(OSProcessorCount);
+    for (unsigned i = 0; i < OSProcessorCount; ++i) {
+        set_thread_affinity(i);
+        std::this_thread::yield();
+
+        LogicalCore &core = processors[i];
+        core.Index = i;
+        MapCpuTopology(core);
+    }
     start_time = std::chrono::high_resolution_clock::now();
     return true;
 }
@@ -96,8 +137,8 @@ cpu_time() {
     auto elapsed_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time);
 
     CpuResult r;
-    r.cycles = cycles;
-    r.time = elapsed_time.count();
+    r.Cycles = cycles;
+    r.Time = elapsed_time.count();
     return r;
 }
 
@@ -222,7 +263,7 @@ mmla_s8_s32(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -254,7 +295,7 @@ mmla_bf16_f32(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -286,7 +327,7 @@ mla_f32_f32(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -318,7 +359,7 @@ mla_bf16_f32(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -350,7 +391,7 @@ mla_s8_s16(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -382,7 +423,7 @@ dot_bf16_f32(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -414,7 +455,7 @@ dot_s8_s32(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -446,7 +487,7 @@ fma_f32_f32(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -478,7 +519,7 @@ fma_f16_f32(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 4 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif
@@ -510,7 +551,7 @@ fma_f16_f16(uint64_t steps) {
     uint64_t ops = steps * ops_per_output * 8 /* num outputs */;
 
     auto r = Result{duration.count(), ops};
-    std::memcpy(r.output, res, sizeof(res));
+    std::memcpy(r.Output, res, sizeof(res));
     return r;
 }
 #endif

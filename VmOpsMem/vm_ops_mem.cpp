@@ -1,5 +1,5 @@
 
-#include <cstdint>
+#include "vm_ops_mem.h"
 
 #include <pthread.h>
 
@@ -12,6 +12,14 @@ extern "C" {
 VMOPSMEM_EXPORT int
 arm_build() {
 #if __aarch64__
+    return 1;
+#endif
+    return 0;
+}
+
+VMOPSMEM_EXPORT int
+x86_build() {
+#if __X86_64__
     return 1;
 #endif
     return 0;
@@ -44,6 +52,13 @@ set_thread_priority() {
 
     param.sched_priority = sched_get_priority_max(policy);
     pthread_setschedparam(pthread_self(), policy, &param);
+}
+
+VMOPSMEM_EXPORT void
+logical_cores(LogicalCore *logicalCores, unsigned OSProcessorCount) {
+    for (unsigned i = 0; i < OSProcessorCount; i++) {
+        logicalCores[i] = processors[i];
+    }
 }
 
 #ifdef __cplusplus
