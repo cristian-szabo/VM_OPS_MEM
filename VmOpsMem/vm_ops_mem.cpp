@@ -3,8 +3,6 @@
 
 #include <pthread.h>
 
-#include "vmopsmem_export.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,7 +25,7 @@ x86_build() {
 
 VMOPSMEM_EXPORT int
 debug_build() {
-#if __DEBUG
+#if defined(DEBUG)
     return 1;
 #endif
     return 0;

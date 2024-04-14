@@ -4,6 +4,8 @@ import argparse
 import vm_ops_mem as vom
 
 def main():
+    vom.init()
+
     available_ops = list(vom.OpsType)
     convert_ops = lambda name: vom.OpsType[name]
 

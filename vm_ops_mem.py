@@ -58,9 +58,36 @@ class LogicalCore(ctypes.Structure):
     ]
 
 
-dynlib_file = "/home/ubuntu/VM_OPS_MEM/Build/clang_64_debug/VmOpsMem/lib/libVmOpsMem.so"
-# dynlib_file = "/home/ubuntu/VM_OPS_MEM/Install/lib/libVmOpsMem.so"
-lib = ctypes.cdll.LoadLibrary(dynlib_file)
+lib = None
+OpsType = None
+supported_ops = None
+measure_ops = None
+
+
+def init():
+    global lib
+    global OpsType
+    global supported_ops
+    global measure_ops
+
+    dynlib_file = os.path.join(os.getcwd(), "Install/lib/libVmOpsMem.so")
+    lib = ctypes.cdll.LoadLibrary(dynlib_file)
+    lib.init()
+
+    if lib.debug_build():
+        print("---------------------------------------------")
+        print("| WARNING: Debug build of VmOpsMem is used! |")
+        print("---------------------------------------------")
+
+    if lib.arm_build():
+        OpsType = ArmOpsType
+        supported_ops = supported_arm_ops
+        measure_ops = measure_arm_ops
+    else:
+        OpsType = X86OpsType
+        supported_ops = supported_x86_ops
+        measure_ops = measure_x86_ops
+
 
 def supported_arm_ops():
     ops = list()
@@ -154,18 +181,6 @@ def measure_x86_ops(op, steps):
         raise RuntimeError(f"Measure function for op `{op}` not found!")
     return result.time, result.ops
 
-
-if lib.arm_build():
-    OpsType = ArmOpsType
-    supported_ops = supported_arm_ops
-    measure_ops = measure_arm_ops
-else:
-    OpsType = X86OpsType
-    supported_ops = supported_x86_ops
-    measure_ops = measure_x86_ops
-
-lib.init()
-
 def cpu_time():
     lib.cpu_time.restype = CpuResult
     result = lib.cpu_time()
@@ -209,11 +224,6 @@ def system_topology():
 
         system[socket_key][core_key][cpu_key] = thread_key
     return system
-
-
-if lib.debug_build():
-    print("WARNING: Debug build of VmOpsMem is used!")
-
 
 def sizeof_fmt(num, suffix="Ops", steps=1024.0):
     for unit in ("", "K", "M", "G", "T", "P", "E", "Z"):

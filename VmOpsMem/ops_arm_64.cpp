@@ -112,7 +112,7 @@ extern "C" {
 
 extern VMOPSMEM_EXPORT void set_thread_affinity(int coreId);
 
-VMOPSMEM_EXPORT bool
+VMOPSMEM_EXPORT void
 init() {
     unsigned OSProcessorCount = sysconf(_SC_NPROCESSORS_CONF);
     processors.resize(OSProcessorCount);
@@ -125,7 +125,6 @@ init() {
         MapCpuTopology(core);
     }
     start_time = std::chrono::high_resolution_clock::now();
-    return true;
 }
 
 VMOPSMEM_EXPORT CpuResult

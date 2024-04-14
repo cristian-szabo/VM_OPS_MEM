@@ -32,6 +32,9 @@ elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
     target_compile_options(${PROJECT_NAME} PRIVATE -march=armv8.4-a+bf16+i8mm+dotprod+fp16)
 endif()
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:DEBUG>)
+target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:-O0> $<$<CONFIG:Release>:-O3>)
+
 install(TARGETS ${PROJECT_NAME}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )

@@ -203,21 +203,19 @@ MapCpuTopology(LogicalCore &core) {
 extern "C" {
 #endif
 
-extern VMOPSMEM_EXPORT void set_thread_affinity(int coreId);
-
-VMOPSMEM_EXPORT bool
+VMOPSMEM_EXPORT void
 init() {
-    if (syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA)) {
-        return false;
-    } else {
-        return true;
-    }
+    syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA);
+
+    QueryFeatures();
 
     unsigned OSProcessorCount = sysconf(_SC_NPROCESSORS_CONF);
+
     processors.resize(OSProcessorCount);
 
     for (unsigned i = 0; i < OSProcessorCount; ++i) {
         set_thread_affinity(i);
+
         std::this_thread::yield();
 
         LogicalCore &core = processors[i];
@@ -227,8 +225,6 @@ init() {
     }
 
     start_time = std::chrono::high_resolution_clock::now();
-
-    return true;
 }
 
 VMOPSMEM_EXPORT CpuResult
