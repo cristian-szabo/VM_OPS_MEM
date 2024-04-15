@@ -116,14 +116,27 @@ VMOPSMEM_EXPORT void
 init() {
     unsigned OSProcessorCount = sysconf(_SC_NPROCESSORS_CONF);
     processors.resize(OSProcessorCount);
+
+    processors.resize(OSProcessorCount);
+    cpu_set_t prevCpuSet;
+    pthread_getaffinity_np(thread, sizeof(prevCpuSet), &prevCpuSet);
+
     for (unsigned i = 0; i < OSProcessorCount; ++i) {
-        set_thread_affinity(i);
+        cpu_set_t cpuset{};
+        CPU_ZERO(&cpuset);
+        CPU_SET(coreId, &cpuset);
+
+        pthread_setaffinity_np(thread, sizeof(cpuset), &cpuset);
+
         std::this_thread::yield();
 
         LogicalCore &core = processors[i];
         core.Index = i;
         MapCpuTopology(core);
     }
+
+    pthread_setaffinity_np(thread, sizeof(prevCpuSet), &prevCpuSet);
+
     start_time = std::chrono::high_resolution_clock::now();
 }
 

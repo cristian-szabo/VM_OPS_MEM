@@ -54,7 +54,7 @@ class LogicalCore(ctypes.Structure):
         ("index", ctypes.c_uint),
         ("package_id", ctypes.c_uint),
         ("core_id", ctypes.c_uint),
-        ("smt_id", ctypes.c_uint),
+        ("thread_id", ctypes.c_uint),
     ]
 
 
@@ -210,7 +210,7 @@ def system_topology():
     for cpu_info in cpus:
         socket_key = f"Socket#{cpu_info.package_id}"
         core_key = f"Core#{cpu_info.core_id}"
-        cpu_key = f"CPU#{cpu_info.smt_id}"
+        cpu_key = f"vCPU#{cpu_info.thread_id}"
         thread_key = f"Thread#{cpu_info.index}"
 
         if socket_key not in system:
@@ -249,8 +249,8 @@ class PerfReport:
         self.steps += steps
 
     def __str__(self):
-        peak_ops = self.total_ops / self.elapsed_time
-        ai = self.total_ops / (self.elapsed_time * 1e9)
+        peak_ops = self.total_ops / (self.elapsed_time / self.ratio)
+        ai = self.total_ops / ((self.elapsed_time / self.ratio) * 1e9)
         cpu_freq = self.total_freq / self.steps
         ops_fmt, ops_unit = sizeof_fmt(self.total_ops)
         peak_fmt, peak_unit = sizeof_fmt(peak_ops)
@@ -258,7 +258,7 @@ class PerfReport:
         str = ""
         str += f"Name: {self.name}\n"
         str += f"Time: {self.elapsed_time / self.ratio:.2f} sec\n"
-        str += f"Ops: {ops_fmt / self.ratio:.2f} {ops_unit}\n"
+        str += f"Ops: {ops_fmt:.2f} {ops_unit}\n"
         str += f"Peak: {peak_fmt:.2f} {peak_unit}/sec\n"
         str += f"AI: {ai:.2f} ops/cycle\n"
         str += f"CpuFreq: {cpu_fmt:.2f} {cpu_unit}\n"
@@ -268,7 +268,7 @@ class PerfReport:
 
 class PerfMonitor:
     def __init__(self, num_cores=None):
-        self.physical_cores = [core for core in logical_cores() if core.smt_id == 0]
+        self.physical_cores = [core for core in logical_cores() if core.thread_id == 0]
         self.num_cores = len(self.physical_cores)
 
         if num_cores is not None:

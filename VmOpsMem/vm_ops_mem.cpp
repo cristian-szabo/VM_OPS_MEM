@@ -34,6 +34,7 @@ debug_build() {
 VMOPSMEM_EXPORT void
 set_thread_affinity(int coreId) {
     cpu_set_t cpuset{};
+    CPU_ZERO(&cpuset);
     CPU_SET(coreId, &cpuset);
 
     pthread_t thread = pthread_self();

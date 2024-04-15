@@ -24,13 +24,3 @@ struct LogicalCore {
 };
 
 extern std::vector<LogicalCore> processors;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-VMOPSMEM_EXPORT void set_thread_affinity(int coreId);
-
-#ifdef __cplusplus
-}
-#endif
